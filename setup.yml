@@ -1,0 +1,8 @@
+- hosts: all
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - debug:
+        msg: "Run: ansible-playbook provision.yml"
+      run_once: yes

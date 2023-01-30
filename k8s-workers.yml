@@ -1,0 +1,23 @@
+---
+
+- hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Get the token for joining the worker nodes
+      shell: kubeadm token create  --print-join-command
+      register: kubernetes_join_command
+      run_once: yes
+      delegate_to: master
+
+    - name: workers nodes
+      when: "'worker' in group_names"
+      block:
+        - name: Join cluster
+          shell:
+            cmd: "{{ kubernetes_join_command.stdout }}"
+
+        - name: Add worker role
+          shell:
+            cmd: kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=""

@@ -1,0 +1,113 @@
+---
+
+# https://www.linuxtechi.com/install-kubernetes-cluster-on-rocky-linux/
+
+- hosts: all
+  gather_facts: yes
+  become: yes
+
+  tasks:
+    - name: Yum Update
+      yum:
+        name: '*'
+        state: latest
+        exclude:
+          - kubelet
+          - kubeadm
+          - kubectl
+
+    - name: Configure hosts
+      tags: hosts
+      lineinfile:
+        state: present
+        dest: /etc/hosts
+        regexp: '^(?:[0-9]{1,3}\.){3}[0-9]{1,3} {{item}}$'
+        line: "{{ hostvars[item]['ansible_host'] }} {{item}}"
+      when: item != inventory_hostname
+      with_items: '{{groups.all}}'
+
+    - name: Disable Swap (session)
+      shell: swapoff -a
+
+    - name: Disable swap (persistent)
+      replace:
+        path: /etc/fstab
+        regexp: '^([^#\s].*\sswap\s.*)$'
+        replace: '# \1'
+
+    - name: Disable SELinux (persistent)
+      tags: selinux
+      ansible.posix.selinux:
+        state: disabled
+
+    - name: Disable SELinux (session)
+      tags: selinux
+      shell:
+        cmd: setenforce 0
+
+    - name: Modprobe br_netfilter (session)
+      tags: modprobe
+      shell:
+        cmd: modprobe br_netfilter
+
+    - name: Modprobe br_netfilter (persistent)
+      copy:
+        dest: /etc/modules-load.d/br_netfilter.conf
+        content: |
+          br_netfilter
+
+    - name: sysctl - ip_forward
+      tags: sysctl
+      sysctl:
+        name: net.ipv4.ip_forward
+        value: "1"
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: sysctl - bridge nf iptables
+      tags: sysctl
+      sysctl:
+        name: net.bridge.bridge-nf-call-iptables
+        value: "1"
+        sysctl_set: yes
+        state: present
+        reload: yes
+
+    - name: Network Manager Calico conf
+      tags: netmgr
+      copy:
+        src: calico.conf
+        dest: /etc/NetworkManager/conf.d/calico.conf
+      notify:
+        - restart-netmgr
+
+      # vm.nax_map_count = 262144
+      # fs.inotify.max_user_watches = 32768
+
+    - name: Install firewalld
+      yum:
+        name: firewalld
+        state: latest
+
+    - name: Enabled firewalld
+      service:
+        name: firewalld
+        enabled: yes
+        state: stopped
+
+    # - name: Firewall Rules (v8)
+    #   tags: firewall
+    #   shell:
+    #     cmd: firewall-cmd --permanent --add-port={{ item }}/tcp
+    #   with_items: "{{ firewall_ports }}"
+    #   register: firewall
+    #   changed_when: "'ALREADY_ENABLED' not in firewall.stderr"
+    #   notify:
+    #     - firewall-reload
+
+  handlers:
+    - name: restart-netmgr
+      service:
+        name:  NetworkManager
+        state: restarted

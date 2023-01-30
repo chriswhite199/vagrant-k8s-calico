@@ -1,0 +1,48 @@
+---
+
+# https://www.linuxtechi.com/install-kubernetes-cluster-on-rocky-linux/
+
+- hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:
+    - name: Add repository
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/centos/docker-ce.repo
+        dest: /etc/yum.repos.d/docker-ce.repo
+
+    - name: Install Docker
+      yum:
+        name: 
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+        state: latest
+      notify:
+        - systemd
+
+    - name: Create /etc/docker
+      tags: config
+      file:
+        path: /etc/docker
+        state: directory
+
+    - name: Daemon config
+      tags: daemon
+      copy:
+        dest: /etc/docker/daemon.json
+        content: |
+          {
+            "exec-opts": ["native.cgroupdriver=systemd"]
+          }
+      notify:
+        - systemd
+
+  handlers:
+    - name: systemd
+      service:
+        name: docker
+        enabled: yes
+        state: restarted
+      

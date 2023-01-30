@@ -1,0 +1,122 @@
+---
+
+# https://www.linuxtechi.com/install-kubernetes-cluster-on-rocky-linux/
+
+- hosts: all
+  gather_facts: no
+  become: yes
+
+  tasks:    
+    - name: K8s repo
+      tags: k8s-repo
+      copy:
+        dest: /etc/yum.repos.d/k8s.repo
+        content: |
+          [kubernetes]
+          name=Kubernetes
+          baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-$basearch
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
+
+    - name: Install K8s
+      tags: k8s-install
+      yum:
+        name: 
+          - kubelet == {{ kubelet_version }}
+          - kubeadm == {{ kubeadm_version }}
+          - kubectl == {{ kubectl_version }}
+        state: present
+
+    - name: Enable Kubelet service
+      tags: svcs
+      service:
+        name: kubelet
+        enabled: yes
+        state: started
+
+    - name: stat admin.conf
+      stat:
+        path: /etc/kubernetes/admin.conf
+      when: inventory_hostname == 'master'
+      register: admin_conf
+
+    - name: master tasks
+      when: inventory_hostname == 'master' and not admin_conf.stat.exists
+      block:
+        - name: kubeadm config
+          tags: config
+          copy:
+            dest: /etc/kubeadm-config.yml
+            content: |
+              kind: ClusterConfiguration
+              apiVersion: kubeadm.k8s.io/v1beta3
+              kubernetesVersion: v{{ kubeadm_version }}
+              networking:
+                podSubnet: "{{ pod_subnet }}"
+              ---
+              kind: KubeletConfiguration
+              apiVersion: kubelet.config.k8s.io/v1beta1
+              cgroupDriver: systemd
+
+        - name: kubeadm init
+          tags: init
+          shell:
+            cmd: kubeadm init --config /etc/kubeadm-config.yml
+
+        - name: Create .kube
+          tags: kubeconfig
+          file:
+            path: /root/.kube
+            state: directory
+
+        - name: Copy kube config
+          tags: kubeconfig
+          copy:
+            src: /etc/kubernetes/admin.conf
+            dest: /root/.kube/config
+            remote_src: yes
+
+    - name: calico config
+      when: inventory_hostname == 'master'
+      block:
+        # note the pod cidr in custom-resources.yaml must match that configured in the kubeadm-config.yml step above
+        - name: Copy calico config
+          template:
+            src: "{{ item }}.j2"
+            dest: "/root/{{ item }}"
+          with_items:
+            - tigera-operator.yaml
+            - custom-resources.yaml
+
+        - name: Apply calico configs
+          shell:
+            cmd: kubectl apply --server-side=true -f /root/{{ item }}
+          with_items:
+            - tigera-operator.yaml
+            - custom-resources.yaml
+
+        - name: wait for calico deployments to be ready
+          tags: calico_wait
+          shell:
+            cmd: kubectl rollout status deployment {{ item }} -n calico-system --timeout=2m
+          with_items:
+            - calico-kube-controllers
+            - calico-typha
+          register:
+          retries: 2
+          delay: 10
+
+        - name: Wait for master to be ready
+          tags: master_wait
+          shell:
+            cmd: kubectl wait node master --for=condition=Ready --timeout=2m
+          
+
+    - name: Get kubeconfig
+      tags: get_kubeconfig
+      when: inventory_hostname == 'master'
+      fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: ./admin.conf
+        flat: true

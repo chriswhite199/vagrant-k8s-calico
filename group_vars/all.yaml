@@ -1,0 +1,12 @@
+master_ip: 10.0.0.10
+node7_ip: 10.0.0.11
+node8_ip: 10.0.0.12
+
+k8s_version: 1.22.17
+
+kubeadm_version: "{{ k8s_version }}"
+kubelet_version: "{{ k8s_version }}"
+kubectl_version: "{{ k8s_version }}"
+
+
+pod_subnet: 10.100.0.0/16
