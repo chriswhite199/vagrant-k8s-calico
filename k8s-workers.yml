@@ -14,10 +14,17 @@
     - name: workers nodes
       when: "'worker' in group_names"
       block:
+        - name: Leave cluster
+          shell:
+            cmd: kubeadm reset -f && iptables -F
+
         - name: Join cluster
           shell:
             cmd: "{{ kubernetes_join_command.stdout }}"
 
         - name: Add worker role
+          tags: label
+          become: no
           shell:
-            cmd: kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=""
+            cmd: kubectl label node {{ inventory_hostname }} node-role.kubernetes.io/worker=worker
+          delegate_to: localhost

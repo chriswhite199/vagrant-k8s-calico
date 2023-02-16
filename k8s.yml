@@ -44,25 +44,36 @@
     - name: master tasks
       when: inventory_hostname == 'master' and not admin_conf.stat.exists
       block:
-        - name: kubeadm config
-          tags: config
-          copy:
-            dest: /etc/kubeadm-config.yml
-            content: |
-              kind: ClusterConfiguration
-              apiVersion: kubeadm.k8s.io/v1beta3
-              kubernetesVersion: v{{ kubeadm_version }}
-              networking:
-                podSubnet: "{{ pod_subnet }}"
-              ---
-              kind: KubeletConfiguration
-              apiVersion: kubelet.config.k8s.io/v1beta1
-              cgroupDriver: systemd
+        # - name: kubeadm config
+        #   tags: config
+        #   copy:
+        #     dest: /etc/kubeadm-config.yml
+        #     content: |
+        #       kind: ClusterConfiguration
+        #       apiVersion: kubeadm.k8s.io/v1beta3
+        #       kubernetesVersion: v{{ kubeadm_version }}
+        #       controlPlaneEndpoint: "192.168.240.100:6443"
+        #       networking:
+        #         podSubnet: "{{ pod_subnet }}"
+        #         serviceSubnet: "{{ svc_subnet }}"
+        #       ---
+        #       kind: KubeletConfiguration
+        #       apiVersion: kubelet.config.k8s.io/v1beta1
+        #       cgroupDriver: systemd
+        #       address
 
         - name: kubeadm init
           tags: init
           shell:
-            cmd: kubeadm init --config /etc/kubeadm-config.yml
+            cmd: |
+              kubeadm init \
+                --apiserver-advertise-address=192.168.240.100 \
+                --control-plane-endpoint=192.168.240.100 \
+                --feature-gates IPv6DualStack=false \
+                --apiserver-cert-extra-sans=192.168.240.100 \
+                --pod-network-cidr={{ pod_subnet }} \
+                --service-cidr={{ svc_subnet }} \
+                --node-name "master"
 
         - name: Create .kube
           tags: kubeconfig
@@ -86,23 +97,25 @@
             src: "{{ item }}.j2"
             dest: "/root/{{ item }}"
           with_items:
-            - tigera-operator.yaml
-            - custom-resources.yaml
+            #- tigera-operator.yaml
+            #- custom-resources.yaml
+            - canal.yaml
 
         - name: Apply calico configs
           shell:
             cmd: kubectl apply --server-side=true -f /root/{{ item }}
           with_items:
-            - tigera-operator.yaml
-            - custom-resources.yaml
+            #- tigera-operator.yaml
+            #- custom-resources.yaml
+            - canal.yaml
 
         - name: wait for calico deployments to be ready
           tags: calico_wait
           shell:
-            cmd: kubectl rollout status deployment {{ item }} -n calico-system --timeout=2m
+            cmd: kubectl rollout status deployment {{ item }} -n kube-system --timeout=2m
           with_items:
             - calico-kube-controllers
-            - calico-typha
+            #- calico-typha
           register:
           retries: 2
           delay: 10

@@ -9,4 +9,6 @@ kubelet_version: "{{ k8s_version }}"
 kubectl_version: "{{ k8s_version }}"
 
 
-pod_subnet: 10.100.0.0/16
+subnet: 10.100.0.0/16
+pod_subnet: 10.100.192.0/22
+svc_subnet: 10.100.252.0/24

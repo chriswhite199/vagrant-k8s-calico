@@ -11,7 +11,7 @@ spec:
   selector:
     matchLabels:
       run: httpbin
-  replicas: 2
+  replicas: 1
   template:
     metadata:
       labels:
@@ -39,7 +39,7 @@ spec:
     nodePort: 30080
     protocol: TCP
     name: http
-  externalTrafficPolicy: Local
+  externalTrafficPolicy: Cluster
   selector:
     run: httpbin
 
@@ -73,10 +73,52 @@ spec:
 
 ---
 
+---
+
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: allow-master-ip-ingress
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allowed-ip-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            # allowlist specific external IP to query nodeport service - when hitting node that hosts the pod utilized
+            cidr: 192.168.240.1/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.192.0/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.194.0/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.195.0/32
+
+      ports:
+        # pod port - not svc or nodeport (see latter policy for nodeport)
+        - port: 80
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allowed-ip-ingress-np
 spec:
   podSelector: {}
   policyTypes:
@@ -85,8 +127,10 @@ spec:
     - from:
         - ipBlock:
             # allowlist specific IP to query nodeport service
-            cidr: 192.168.121.186/32
+            cidr: 192.168.240.1/32
 
-# from any pod in the namespace - curl httpbin:8080/get works
-# from the master node, curl workerx:30080/get works
-# from any other worker node, curl fails to workerx:30080/get
+      ports:
+        # limit nodeport to specific IP
+        - port: 30080
+
+---
