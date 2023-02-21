@@ -1,6 +1,6 @@
 ---
 
-- hosts: all
+- hosts: worker
   gather_facts: no
   become: yes
 
