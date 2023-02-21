@@ -1,0 +1,91 @@
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-same-ns-ingress-egress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        # allow same ns pod and service traffic
+        - podSelector: {}
+  egress:
+    - to:
+        # allow same ns pod and service traffic
+        - podSelector: {}
+    - to:
+        # allow kube dns lookups
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - port: 53
+          protocol: UDP
+
+---
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allowed-ip-ingress
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            # allowlist specific external IP to query nodeport service - when hitting node that hosts the pod utilized
+            cidr: 192.168.240.1/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.192.0/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.193.0/32
+        - ipBlock:
+            # allowlist the .0 address for each node in the cluster, to allow iptable forward when querying nodeport on node NOT hosting the pod
+            cidr: 10.100.194.0/32
+
+      ports:
+        # pod port - not svc or nodeport (see latter policy for nodeport)
+        - port: 80
+
+---
+
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allowed-ip-ingress-np
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - ipBlock:
+            # allowlist specific IP to query nodeport service
+            cidr: 192.168.240.1/32
+
+      ports:
+        # limit nodeport to specific IP
+        - port: 30080
+
+---
